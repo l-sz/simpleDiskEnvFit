@@ -25,6 +25,44 @@ from . import ulrich_envelope as uenv
 
 def ulrich_envelope(grid, ppar, cavity=False):
     '''
+    Returns dust density distribution ([nx, ny, nz, 1] dimension) of a rotationally
+    flattened protostellar envelope. The profile is given by Ulrich (1976).
+    The model parameters should be provided in ppar.  Unit of the returned array
+    is [gram/cm^3] of dust.
+        
+    Parameters
+    ----------
+    grid : radmc3dPy.grid object
+    Initialized with the model boundaries.
+    ppar : dict
+    Dictionary provided by modPar.ppar (radmc3dPar object)
+    cavity : bool
+    If True, then envelope model has cavity. Default is False.
+    '''
+    rr, th = np.meshgrid(grid.x, grid.y, indexing='ij')
+    z0 = np.zeros([grid.nx, grid.ny, grid.nz], dtype=np.float64)
+    zz   = rr * np.cos(th)
+    rcyl = rr * np.sin(th)
+    
+    # Envelope density array
+    rho_env = np.zeros([grid.nx, grid.ny, grid.nz,1], dtype=np.float64)
+    
+    dummy = uenv.ulrich_envelope(rr, th, rho0=ppar['rho0Env'],
+                                 rmin=ppar['rTrunEnv'], Rc=ppar['r0Env'])
+    rho_env[:,:,0,0] = dummy
+                                 
+    if cavity:
+                                     
+        rho_env = envelope_cavity(rho_env, grid, ppar)
+                                 
+    # Calculate the volume of each grid cell
+    mass, mass3000 = computeEnvMass(grid, rho_env)
+    
+    return (rho_env, mass, mass3000)
+
+
+def ulrich_envelope2(grid, ppar, cavity=False):
+    '''
     Returns dust density distribution ([nx, ny, nz, 1] dimension) of a rotationally 
     flattened protostellar envelope. The profile is given by Ulrich (1976).
     The model parameters should be provided in ppar.  Unit of the returned array 
@@ -39,25 +77,33 @@ def ulrich_envelope(grid, ppar, cavity=False):
     cavity : bool
            If True, then envelope model has cavity. Default is False.
     '''
+    au = radmc3dPy.natconst.au
     rr, th = np.meshgrid(grid.x, grid.y, indexing='ij')
     z0 = np.zeros([grid.nx, grid.ny, grid.nz], dtype=np.float64)
     zz   = rr * np.cos(th)
     rcyl = rr * np.sin(th)
 
     # Envelope density array
-    rho_env = np.zeros([grid.nx, grid.ny, grid.nz,1], dtype=np.float64)
-
-    dummy = uenv.ulrich_envelope(rr, th, rho0=ppar['rho0Env'], 
+    rho_env = np.zeros([grid.nx, grid.ny, grid.nz,2], dtype=np.float64)
+    rho_env_tot = np.zeros([grid.nx, grid.ny, grid.nz,1], dtype=np.float64)
+    dummy = uenv.ulrich_envelope(rr, th, rho0=ppar['rho0Env'],
                                  rmin=ppar['rTrunEnv'], Rc=ppar['r0Env'])
+                                 
     
-    rho_env[:,:,0,0] = dummy
+    crit = ( rr > ppar['Envcut'] )
+    rho_env[:,:,0,0][crit] = dummy[crit]
     
+    rho_env[:,:,0,1][~crit] = dummy[~crit]
+
+    #  use vec[:,:1] =(2dim) instad of vec[:,0] (=1dim): 
     if cavity:
-        
-        rho_env = envelope_cavity(rho_env, grid, ppar)
+         rho_env[:,:,:,:1] = envelope_cavity(rho_env[:,:,:,:1], grid, ppar)
+         rho_env[:,:,:,1:] = envelope_cavity(rho_env[:,:,:,1:], grid, ppar)
+
+    rho_env_tot = rho_env[:,:,:,:1]+rho_env[:,:,:,1:]
 
     # Calculate the volume of each grid cell
-    mass, mass3000 = computeEnvMass(grid, rho_env)
+    mass, mass3000 = computeEnvMass(grid, rho_env_tot)
     
     return (rho_env, mass, mass3000)
 
@@ -599,3 +645,4 @@ def ISradField(grid, ppar, G=1.7, show=False):
         plt.show()
   
     return Iisrf
+
