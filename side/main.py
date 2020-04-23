@@ -335,11 +335,24 @@ class radmc3dModel:
         # Compute density distributions
         rho_disk_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1], 
                                  dtype=np.float64)
-        rho_env_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1], 
-                                dtype=np.float64)
-        rho_slab_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1], 
-                                dtype=np.float64)
         
+        rho_slab_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1],
+                                dtype=np.float64)
+         
+        #rho_env_dust1 = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1],
+        #                dtype=np.float64) 
+
+        #rho_env_dust2 = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 2],
+        #                dtype=np.float64) 
+
+        if ppar['ngpop'] == 3 and ppar['idisk'] and ppar['ienv'] and not(ppar['islab']):
+            rho_env_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 2],
+                        dtype=np.float64)
+            print('env 3 dust components')
+        else:
+            rho_env_dust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, 1], 
+                                dtype=np.float64)
+            print('env original')
         if ppar['idisk'] == True:
             
             rho_disk_dust, self.mdisk, self.sig0 = \
@@ -355,6 +368,11 @@ class radmc3dModel:
             if (ppar['modeEnv'] == 'Ulrich1976'):
                 rho_env_dust, self.menv, self.menv3000 = \
                     models.ulrich_envelope(self.grid, ppar=ppar, 
+                                           cavity=ppar['icav'])
+                print('env original mode')
+            elif (ppar['modeEnv'] == 'Ulrich1976_2'):
+                rho_env_dust, self.menv, self.menv3000 = \
+                    models.ulrich_envelope2(self.grid, ppar=ppar,
                                            cavity=ppar['icav'])
             elif (ppar['modeEnv'] == 'Tafalla2004'):
                 rho_env_dust, self.menv, self.menv3000 = \
@@ -376,6 +394,7 @@ class radmc3dModel:
             print ("WARN [{:06}]: ngpop not defined in parameter file, using {:2} dust species".format(self.ID, ngpop))
         
         if ngpop == 2 and ppar['idisk'] and ppar['ienv']:
+            print ("using ngpop ", ngpop)
             rhodust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, ngpop])
             rhodust[:,:,:,0] = rho_disk_dust[:,:,:,0]
             rhodust[:,:,:,1] = rho_env_dust[:,:,:,0]
@@ -384,12 +403,25 @@ class radmc3dModel:
                     print('INFO [{:06}]: Adding slab to envelope.'.format(self.ID))
                 rhodust[:,:,:,1] += rho_slab_dust[:,:,:,0]
             self.data.rhodust = rhodust
+            print('using 2 dust') 
+        elif ngpop == 3 and ppar['idisk'] and ppar['ienv'] and not(ppar['islab']):
+              rhodust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, ngpop])
+            #print('caca2')
+              rhodust[:,:,:,0] = rho_disk_dust[:,:,:,0]
+              rhodust[:,:,:,1] = rho_env_dust[:,:,:,0]
+              rhodust[:,:,:,2] = rho_env_dust[:,:,:,1]
+              if ppar['islab']:
+                if self.verbose:
+                    print('INFO [{:06}]: Adding slab to envelope.'.format(self.ID))
+                rhodust[:,:,:,1] += rho_slab_dust[:,:,:,0]
+              self.data.rhodust = rhodust
+              print('using 3 dust') 
         elif ngpop == 3 and ppar['idisk'] and ppar['islab'] and ppar['ienv']:
-            rhodust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, ngpop])
-            rhodust[:,:,:,0] = rho_disk_dust[:,:,:,0]
-            rhodust[:,:,:,1] = rho_env_dust[:,:,:,0]
-            rhodust[:,:,:,2] = rho_slab_dust[:,:,:,0]
-            self.data.rhodust = rhodust
+              rhodust = np.zeros([self.grid.nx, self.grid.ny, self.grid.nz, ngpop])
+              rhodust[:,:,:,0] = rho_disk_dust[:,:,:,0]
+              rhodust[:,:,:,1] = rho_env_dust[:,:,:,0]
+              rhodust[:,:,:,2] = rho_slab_dust[:,:,:,0]
+              self.data.rhodust = rhodust
         else:
             self.data.rhodust = rho_env_dust + rho_disk_dust
         
@@ -1279,7 +1311,6 @@ def getParams(paramfile=None):
                        ' Bulk density of the materials in g/cm^3', 'Dust opacity'])
         modpar.setPar(['gsmin', '1.0e-5', ' Minimum grain size [cm]', 'Dust opacity'])
         modpar.setPar(['gsmax', '1.0e-5', ' Maximum grain size [cm]', 'Dust opacity'])
-        modpar.setPar(['ngs', '1', ' Number of grain size bins', 'Dust opacity'])
         modpar.setPar(['gsdist_powex', '-3.5', ' Power law index of grain size distribution', 'Dust opacity'])
         modpar.setPar(['ngpop', '1', ' Number of grain populations', 'Dust opacity'])
         modpar.setPar(['ngs', '1', ' Number of grain size bins', 'Dust opacity'])
@@ -1308,7 +1339,7 @@ def getParams(paramfile=None):
         modpar.setPar(['dusttogas', '1.0e-2', ' Dust-to-gas mass ratio', 
                        'Envelope parameters'])
         modpar.setPar(['modeEnv', "'Ulrich1976'", 
-                       " Choose envelope model, options: ['Ulrich1976','Tafalla2004','powerlaw']", 
+                       " Choose envelope model, options: ['Ulrich1976','Ulrich1976_2','Tafalla2004','powerlaw']",
                        'Envelope parameters'])
         modpar.setPar(['rho0Env', '4.e-20', 
                        ' New central density g/cm^3 dust density volume', 
@@ -1316,6 +1347,8 @@ def getParams(paramfile=None):
         modpar.setPar(['r0Env', '300.0*au', 
                        " Flattening radius in 'Tafalla2004' or centrifugal radius in 'Ulrich1976' models", 'Envelope parameters'])
         modpar.setPar(['rTrunEnv', '30.0*au', ' Truncation radius', 
+                       'Envelope parameters'])
+        modpar.setPar(['Envcut', '500.*au', ' Diff. dust pop. radius',
                        'Envelope parameters'])
         modpar.setPar(['redFactEnv', '1.0e-2', 
                        ' Density is reduced by this factor if r < rTrunEnv', 
@@ -1363,3 +1396,4 @@ def enablePrint():
     calling blockPrint() when you want to restore print function output.
     '''
     sys.stdout = sys.__stdout__
+
